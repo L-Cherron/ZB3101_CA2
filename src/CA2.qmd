@@ -13,7 +13,7 @@ Ensure file set up is as follows...
 
 Run this only once, as there are some "conflicts" that leads to errors if run more than once
 
-```{r Lib, warnings=F, results='hide'}
+```{r Lib, message=FALSE}
 library(tidyverse)
 library(DESeq2)
 library(apeglm)
@@ -180,6 +180,32 @@ reduced_terms <- reduceSimMatrix(
 )
 
 treemapPlot(reduced_terms)
+
+```
+
+### 1.1.4 False Discovery
+```{r}
+ggplot(upreg_df %>% 
+         arrange(pvalue) %>%
+         mutate(rownum = row_number()) %>% 
+         filter(rownum<600)) +
+  geom_point(aes(x=rownum, y=pvalue))
+
+ggplot(upreg_df %>% 
+         arrange(pvalue) %>%
+         mutate(rownum = row_number()) %>% 
+         filter(rownum<600)) +
+  geom_point(aes(x=rownum, log2FoldChange))
+
+ggplot(res_df) +
+  geom_density(aes(log2FoldChange),fill="gray") + 
+  geom_segment(aes(x=-1,y=0,yend=1.25))+
+  geom_segment(aes(x=1,y=0,yend=1.25))+
+  geom_segment(aes(x=-1.5,y=0,yend=0.25),alpha=0.25)+
+  geom_segment(aes(x=1.5,y=0,yend=0.25),alpha=0.25)+
+  geom_segment(aes(x=-1.0488,y=0,yend=1),col="red")+
+  xlim(-2,2) + 
+  theme_half_open()
 
 ```
 
