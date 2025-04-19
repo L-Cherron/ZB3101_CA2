@@ -1,0 +1,549 @@
+---
+title: "ZB3101 CA2"
+format: html
+---
+
+# 0. Setup
+
+### 0.1 File Setup
+
+Ensure file set up is as follows...
+
+### 0.2 Library Setup
+
+Run this only once, as there are some "conflicts" that leads to errors if run more than once
+
+```{r Lib, warnings=F, results='hide'}
+library(tidyverse)
+library(DESeq2)
+library(apeglm)
+library(ggthemes)
+library(cowplot)
+library(biomaRt)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(rrvgo)
+library(GO.db)
+library(KEGGREST)
+library(GenomicRanges)
+library(plyranges)
+library(ggrepel)
+library(conflicted)
+```
+
+### 0.3 Conflict Mangement
+
+```{r Preferred, message=FALSE}
+conflict_prefer("filter", "dplyr")
+conflict_prefer("select", "dplyr")
+conflict_prefer("count", "dplyr")
+conflict_prefer("rename", "dplyr")
+
+tibble_to_gr <- function(x){
+  return (GRanges(
+    seqnames = x$chrom,
+    ranges = IRanges(start=x$chromStart, end=x$chromEnd)
+  ))
+}
+```
+
+# 1. Analysis
+
+## 1.1 RNA-SEQ
+
+### 1.1.1 Reading Data
+```{r imptRead}
+counts_df <- read_tsv("../data/GSE169312_ReadCount.txt.gz",
+                   col_types = "cnnnnnn") %>% 
+   column_to_rownames("ID") %>% 
+  round() 
+
+tableName <- tibble(ID=colnames(counts_df)) %>%
+  mutate(genotype=factor(str_extract(ID,"(KO|WT)"),
+                            levels=c("WT", "KO")),
+          replicate= str_sub(str_split_i(ID, "_",1),-1)) %>%
+  column_to_rownames("ID")
+```
+
+```{r deseq, message=FALSE}
+dds <- DESeqDataSetFromMatrix(countData=counts_df , 
+                              colData=tableName, 
+                              design= ~ genotype, tidy=F) %>%
+          DESeq()
+
+## Bayesian shrink
+res <- lfcShrink(dds,2) 
+
+
+## Assigning the change based on the set threshold
+threshold_lfc <- 1
+threshold_padj <- 0.05
+
+res_df <- res %>% 
+  as_tibble(rownames="gene_id") %>%
+  drop_na(log2FoldChange,padj) %>% 
+  mutate(change = case_when(
+    (log2FoldChange>threshold_lfc & padj<=threshold_padj) ~ "UP",
+    ((log2FoldChange< -threshold_lfc) & padj<=threshold_padj) ~ "DOWN",
+    .default = "NC"
+  ),
+      change = factor(change, levels=c("NC", "DOWN", "UP")),
+      logp = -log(padj,base=10),
+  gene_id=str_split_i(gene_id, "\\.", 1))
+
+# Optional Cleanup - please have mercy on my laptop
+remove(dds)
+remove(res)
+remove(counts_df)
+remove(tableName)
+```
+
+### 1.1.2 Visualizing
+```{r volcanoPlot}
+ggplot(res_df)+
+  geom_point(aes(x=log2FoldChange,logp, col=change),
+             show.legend = F) +
+  scale_color_colorblind() +
+  theme_tufte(base_size = 14, base_family = "sans")
+
+ggplot(res_df %>% 
+         count(change) %>% 
+         mutate(n=n/sum(n)))+
+  geom_bar(aes(x="Rat",fill=change,y=n), stat="identity") +
+  scale_fill_colorblind() + 
+  theme_tufte()
+
+# Get Percentages
+res_df %>% 
+  count(change) %>% 
+  mutate(n=n/sum(n))
+```
+
+### 1.1.3 Gene Ontology Bin
+
+```{r BPTree}
+
+# Ensembl Database 
+ensembl <- useEnsembl(biomart = "genes", dataset = "mmusculus_gene_ensembl")
+gene_annotations <- getBM(
+  attributes = c("ensembl_gene_id", "external_gene_name", 
+                 "go_id", "name_1006", "namespace_1003"),
+  mart = ensembl
+)
+
+upreg_genelist <- res_df %>%
+  filter(change=="UP") %>% 
+  mutate(gene_id=str_split_i(gene_id,"\\.", 1)) %>%
+  pull(gene_id)
+
+
+
+term2gene <- gene_annotations %>% 
+  filter(namespace_1003=="biological_process") %>%
+  dplyr::select(go_id,ensembl_gene_id)
+
+# Cluster Profiler Enriching Function to find Relevant Ontology
+upbp_enrich_result <- enricher(
+  gene = upreg_genelist,     
+  TERM2GENE = term2gene,
+  pvalueCutoff = 0.01
+)@result %>% 
+  {rownames(.) <- NULL; .} %>% 
+  select(-Description) %>%
+  left_join(gene_annotations %>% select(go_id, name_1006),
+            join_by(ID==go_id), multiple="first") %>%
+  rename(Description=name_1006) %>%
+  arrange(p.adjust)
+
+# Filtering to only the best mapping based on p-value
+enriched_best_mapping <- upbp_enrich_result %>%
+  filter(p.adjust<=0.05) %>% 
+  select(ID) %>% 
+  left_join(term2gene, join_by(ID==go_id), multiple="all") %>% 
+  distinct(ID,ensembl_gene_id, .keep_all = T)
+
+upreg_df <- res_df %>%
+  filter(change=="UP") %>% 
+  mutate(gene_id=str_split_i(gene_id,"\\.", 1)) %>% 
+  left_join(enriched_best_mapping, 
+            join_by(gene_id==ensembl_gene_id),
+            multiple="first")
+
+# Grouping gene ontology by similarity
+reduced_terms <- reduceSimMatrix(
+  simMatrix=calculateSimMatrix(upreg_df %>% pull(ID), 
+                               orgdb = org.Mm.eg.db, 
+                               ont = "BP", method = "Rel"),
+  scores="size",
+  threshold = 0.7,
+  orgdb = org.Mm.eg.db
+)
+
+treemapPlot(reduced_terms)
+
+```
+
+## 1.2 CHIP-SEQ
+
+### 1.2.1 Reading Data
+
+```{r imptBroadPeak}
+broad_peaks_format_column = c("chrom", "chromStart", "chromEnd", "name",
+                                      "score", "strand", "signalValue", "pValue",
+                                      "qValue")
+
+chrm_lvl <- c("1", "2", "3", "4", "5", "6", "7", "8",
+              "9", "10", "11", "12", "13", "14", "15",
+              "16", "17", "18", "19", "X", "Y")
+broadpeaks_WT_me3 <- read_tsv("../data/WT_H3K27me3_peaks.broadPeak",
+                        col_names = broad_peaks_format_column,
+                        show_col_types = FALSE) %>% 
+  mutate(chrom=factor(chrom,levels=chrm_lvl))
+
+broadpeaks_KO_me3 <-read_tsv("../data/cKO_H3K27me3_peaks.broadPeak",
+                        col_names = broad_peaks_format_column,
+                        show_col_types = FALSE) %>% 
+  mutate(chrom=factor(chrom,levels=chrm_lvl))
+
+broadpeaks_WT_ac <- read_tsv("../data/WT_H3K27ac_peaks.broadPeak",
+                        col_names = broad_peaks_format_column,
+                        show_col_types = FALSE) %>% 
+  mutate(chrom=factor(chrom,levels=chrm_lvl))
+
+broadpeaks_KO_ac <- read_tsv("../data/cKO_H3K27ac_peaks.broadPeak",
+                        col_names = broad_peaks_format_column,
+                        show_col_types = FALSE) %>% 
+  mutate(chrom=factor(chrom,levels=chrm_lvl))
+
+WT_me3 <- tibble_to_gr(broadpeaks_WT_me3)
+KO_me3 <- tibble_to_gr(broadpeaks_KO_me3)
+WT_ac <- tibble_to_gr(broadpeaks_WT_ac)
+KO_ac <- tibble_to_gr(broadpeaks_KO_ac)
+
+chrom_sizes <- read_tsv("https://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/mm10.chrom.sizes",
+                        col_names=c("chr","len"),
+                        col_types ="cn") %>% 
+  head(21) %>% 
+  mutate(chr=factor(str_sub(chr,4),levels=chrm_lvl))
+  
+```
+
+### 1.2.2 Visual H3K27me3
+```{r allchrm}
+
+ggplot(broadpeaks_WT_me3) +
+  geom_segment(data=chrom_sizes,
+               aes(x=chr, y=0, yend=len),
+               size=4, color= "orange") +
+  geom_point(aes(x=chrom, y=chromStart), shape=16) +
+  theme_tufte()
+
+```
+
+```{r chrm2}
+
+ggplot(bind_rows(broadpeaks_KO_me3, broadpeaks_WT_me3) %>%
+         filter(chrom==2) %>% 
+         mutate(name=str_split_i(name,"_",1))) + 
+  geom_segment(data=chrom_sizes %>% filter(chr==2),
+               aes(x=c("WT"), y=0, yend=len),
+               size=4, color= "orange") + 
+  geom_segment(data=chrom_sizes %>% filter(chr==2),
+               aes(x=c("cKO"), y=0, yend=len),
+               size=4, color= "orange") +
+  geom_point(aes(x=name,y=chromStart)) + 
+  coord_flip() + 
+  theme_tufte()
+
+```
+
+### 1.2.3 Visual H3K27ac
+
+```{r allchrmAc}
+
+ggplot() +
+  geom_segment(data=chrom_sizes,
+               aes(x=chr, y=0, yend=len),
+               size=4, color= "lightblue") +
+  geom_segment(data=chrom_sizes,
+               aes(x=chr, y=0, yend=-len),
+               size=4, color= "lightblue") +
+  geom_point(data=broadpeaks_WT_ac,
+             aes(x=chrom, y=-chromStart), shape=16, alpha= 0.5) +
+  geom_point(data=broadpeaks_KO_ac,
+              aes(x=chrom, y=chromStart), shape=16, alpha=0.5)+
+  theme_tufte(base_family="sans") +
+  coord_flip() 
+
+```
+
+## 1.3 Relationship
+
+### 1.3.1 Histone Mod
+Histone AcetylTransferase gene regulation
+```{r HAT}
+acetyl_activity <- gene_annotations %>% 
+  filter(name_1006=="histone acetyltransferase activity") %>% 
+  left_join(res_df %>% 
+              distinct(gene_id,.keep_all=T), 
+            join_by(ensembl_gene_id==gene_id))
+
+methyl_activity <- gene_annotations %>% 
+  filter(name_1006=="histone methyltransferase activity") %>% 
+  left_join(res_df %>% 
+              distinct(gene_id,.keep_all=T), 
+            join_by(ensembl_gene_id==gene_id))
+
+ggplot(acetyl_activity) + 
+  geom_point(aes(x="Ac",y=log2FoldChange)) + 
+  geom_text_repel(aes(x="Ac", y=log2FoldChange,
+                      label=external_gene_name)) + 
+  geom_point(data=methyl_activity,
+             aes(x="Me3",y=log2FoldChange)) + 
+  geom_text_repel(data=methyl_activity,
+                  aes(x="Me3", y=log2FoldChange,
+                      label=external_gene_name)) + 
+  theme_bw()
+
+```
+
+### 1.3.2 Read GRange
+
+This is setup
+```{r confusionM}
+# It is super effective
+tolerance <- 20
+
+gene_locations <- getBM(
+  attributes = c("ensembl_gene_id", "chromosome_name", "start_position", "end_position", "strand", "external_gene_name"),
+  filters = "ensembl_gene_id",
+  values = res_df%>%pull(gene_id),
+  mart = ensembl
+)
+
+results_gr <- res_df %>%
+  left_join(gene_locations, join_by(gene_id==ensembl_gene_id)) %>%
+  na.omit() %>% 
+  {GRanges(seqnames = .$chromosome_name,
+           ranges = IRanges(start=.$start_position, 
+                            end=.$end_position),
+           gene = .$gene_id)}
+
+
+me3_to_me3 <- join_overlap_inner(WT_me3+tolerance, KO_me3+tolerance) %>% 
+  join_overlap_inner(results_gr) %>% {.$gene}
+
+ac_to_me3 <- join_overlap_inner(WT_ac+tolerance, KO_me3+tolerance) %>% 
+  join_overlap_inner(results_gr) %>% {.$gene}
+  
+me3_to_ac <- join_overlap_inner(WT_me3+tolerance, KO_ac+tolerance) %>% 
+  join_overlap_inner(results_gr) %>% {.$gene}
+
+ac_to_ac <- join_overlap_inner(WT_ac+tolerance, KO_ac+tolerance) %>% 
+  join_overlap_inner(results_gr) %>% {.$gene}
+
+ac_all <- join_overlap_inner(results_gr, KO_ac+tolerance) %>% 
+  {.$gene}
+
+nu_to_ac <- join_overlap_inner(results_gr, KO_ac+tolerance) %>%
+  filter(!(gene %in% me3_to_ac)) %>% 
+  filter(!(gene %in% ac_to_ac)) %>% 
+  {.$gene}
+
+by_origin_me3 <- res_df %>% filter(gene_id %in% me3_to_ac) %>%
+  count(change) %>% 
+  rbind(c("DOWN",0)) %>%
+  rename(me3=n) %>%
+  pivot_wider(names_from=change, values_from=me3) %>% 
+  mutate(exp="me3ToAc",
+         UP=as.integer(UP),
+         DOWN=as.integer(DOWN),
+         NC=as.integer(NC))
+
+by_origin_ac <- res_df %>% filter(gene_id %in% ac_to_ac) %>%
+  dplyr::count(change) %>% 
+  rename(me3=n) %>%
+  pivot_wider(names_from=change, values_from=me3) %>% 
+  mutate(exp="acToAc")
+
+by_origin_nu <- res_df %>% filter(gene_id %in% nu_to_ac) %>%
+  dplyr::count(change) %>% 
+  rename(me3=n) %>%
+  pivot_wider(names_from=change, values_from=me3) %>% 
+  mutate(exp="nuToAC")
+
+non_ac_gene <- res_df %>% filter(!(gene_id %in% ac_all)) %>%
+  dplyr::count(change) %>% 
+  rename(me3=n) %>%
+  pivot_wider(names_from=change, values_from=me3) %>% 
+  mutate(exp="nonAC")
+
+by_origin <- bind_rows(by_origin_ac,
+                       by_origin_me3,
+                       by_origin_nu,
+                       non_ac_gene)
+```
+
+### 1.3.3 Fisher Acetyl
+Actual stats table
+```{r MkTable}
+acetyl_diff <- by_origin[1:3,] %>% 
+  select(-exp) %>% 
+  colSums() %>% 
+  bind_rows(by_origin[4,]) 
+
+print(acetyl_diff)
+print(fisher.test(acetyl_diff %>% select(-exp)))
+print(chisq.test(acetyl_diff %>% select(-exp))$stdres)
+print(chisq.test(acetyl_diff %>% select(-exp))$expected)
+```
+
+### 1.3.4 Fisher Origin
+```{r}
+origin_diff <- by_origin[1:3,]
+
+print(origin_diff)
+print(fisher.test(origin_diff %>% select(-exp), workspace = 2e6))
+print(chisq.test(origin_diff %>% select(-exp))$stdres)
+print(chisq.test(origin_diff %>% select(-exp))$expected)
+
+```
+
+
+# 2. Biological Impact
+
+## 2.1 Downregulation
+```{r}
+downreg_genelist <- res_df %>%
+  filter(change=="DOWN") %>% 
+  pull(gene_id)
+
+
+# Cluster Profiler Enriching Function to find Relevant Ontoloy
+downbp_enrich_result <- enricher(
+  gene = downreg_genelist,     
+  TERM2GENE = term2gene,
+  pvalueCutoff = 0.01
+)@result %>% 
+  {rownames(.) <- NULL; .} %>% 
+  select(-Description) %>%
+  left_join(gene_annotations %>% select(go_id, name_1006),
+            join_by(ID==go_id), multiple="first") %>%
+  rename(Description=name_1006) %>%
+  arrange(p.adjust)
+
+denriched_best_mapping <- downbp_enrich_result %>%
+  filter(p.adjust<=0.05) %>% 
+  select(ID) %>% 
+  left_join(term2gene, join_by(ID==go_id), multiple="all") %>% 
+  distinct(ID,ensembl_gene_id, .keep_all = T)
+
+downreg_df <- res_df %>%
+  filter(change=="DOWN") %>% 
+  mutate(gene_id=str_split_i(gene_id,"\\.", 1)) %>% 
+  left_join(denriched_best_mapping, 
+            join_by(gene_id==ensembl_gene_id),
+            multiple="first")
+
+
+dreduced_terms <- reduceSimMatrix(
+  simMatrix=calculateSimMatrix(downreg_df %>% pull(ID), 
+                               orgdb = org.Mm.eg.db, 
+                               ont = "BP", method = "Rel"),
+  scores="size",
+  threshold = 0.7,
+  orgdb = org.Mm.eg.db
+)
+
+treemapPlot(dreduced_terms)
+
+
+```
+
+
+## 2.2 Neuronal
+As most is neuronal impact, and since the cells are mostly neuronal in nature
+
+### 2.2.1 Glutamatergic Synapse
+The list can be pasted into the website to show the impact on the synaptic
+
+```{r}
+# mmu04724 -> Mus musculus Glutamatergic Synapse 
+# https://www.kegg.jp/pathway/mmu04724
+excite_synapse_pathway <- keggGet("mmu04724")
+excite_synpase_raw_genes <- excite_synapse_pathway[[1]]$GENE
+
+excite_synapse_genes <- data.frame(
+  keggName=excite_synpase_raw_genes[seq(1, length(excite_synpase_raw_genes), by = 2)],
+  geneName=excite_synpase_raw_genes[seq(2, length(excite_synpase_raw_genes), by = 2)]
+) %>% 
+  mutate(geneName=str_split_i(geneName, ";", 1)) %>% 
+  left_join(gene_annotations %>% 
+              select(ensembl_gene_id, external_gene_name),
+            join_by(geneName==external_gene_name),
+            multiple="first") %>% 
+  inner_join(res_df %>% 
+               select(gene_id, change),
+             join_by(ensembl_gene_id==gene_id)) %>% 
+  filter(change %in% c("UP", "DOWN"))
+
+
+print("Upregulated")
+print(pull(excite_synapse_genes%>%
+             filter(change=="UP"), keggName) %>% paste(collapse=" OR "))
+
+print("Downregulated")
+print(pull(excite_synapse_genes%>%
+             filter(change=="DOWN"), keggName) %>% paste(collapse=" OR "))
+
+```
+
+### 2.2.2 GABAergic synapse
+
+```{r}
+# mmu04727 -> Mus musculus GABAergic Synapse 
+# https://www.kegg.jp/pathway/mmu04727
+inhib_synapse_pathway <- keggGet("mmu04727")
+inhib_synpase_raw_genes <- inhib_synapse_pathway[[1]]$GENE
+
+inhib_synapse_genes <- data.frame(
+  keggName=inhib_synpase_raw_genes[seq(1, length(inhib_synpase_raw_genes), by = 2)],
+  geneName=inhib_synpase_raw_genes[seq(2, length(inhib_synpase_raw_genes), by = 2)]
+) %>% 
+  mutate(geneName=str_split_i(geneName, ";", 1)) %>% 
+  left_join(gene_annotations %>% 
+              select(ensembl_gene_id, external_gene_name),
+            join_by(geneName==external_gene_name),
+            multiple="first") %>% 
+  inner_join(res_df %>% 
+               select(gene_id, change),
+             join_by(ensembl_gene_id==gene_id)) %>% 
+  filter(change %in% c("UP", "DOWN"))
+
+
+print("Upregulated")
+print(pull(inhib_synapse_genes%>%
+             filter(change=="UP"), keggName) %>% paste(collapse=" OR "))
+
+print("Downregulated")
+print(pull(inhib_synapse_genes%>%
+             filter(change=="DOWN"), keggName) %>% paste(collapse=" OR "))
+
+```
+
+
+## 2.3 Gene Regulation
+
+```{r}
+# Add extra filter to those especially biologically significant
+inc_gene_exp <- gene_annotations %>% 
+  filter(ensembl_gene_id %in% upreg_genelist,
+         name_1006=="positive regulation of gene expression") %>% 
+  left_join(upreg_df %>% select(gene_id,log2FoldChange,padj) %>% distinct(),
+            join_by(ensembl_gene_id==gene_id)) %>% 
+  left_join(gene_locations, join_by(ensembl_gene_id, external_gene_name)) %>% 
+  filter(log2FoldChange>=1.5)
+
+print(inc_gene_exp %>% 
+        select(external_gene_name))
+```
