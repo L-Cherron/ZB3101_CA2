@@ -3,6 +3,9 @@ title: "ZB3101 CA2"
 format: html
 ---
 
+# Link to Doc
+https://nusu-my.sharepoint.com/:w:/g/personal/e0958318_u_nus_edu/EW3JYlrT-z5CnZ_BVkKzoX4BkfC1PDEDRX9sHKhkOlHtIg?e=t3Irga
+
 # 0. Setup
 
 ### 0.1 File Setup
