@@ -575,4 +575,15 @@ inc_gene_exp <- gene_annotations %>%
 
 print(inc_gene_exp %>% 
         select(external_gene_name))
+
+master_gene_gr <- gene_locations %>% 
+  filter(ensembl_gene_id %in% 
+           (inc_gene_exp %>% pull(ensembl_gene_id))) %>% 
+  {GRanges(seqnames = .$chromosome_name,
+           ranges = IRanges(start=.$start_position,
+                            end=.$end_position),
+           e_gene=.$ensembl_gene_id,
+           name=.$external_gene_name)}
+  
+
 ```
