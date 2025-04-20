@@ -145,6 +145,8 @@ p1 <- EnhancedVolcano(res_df,
                 colAlpha = 1,
                 drawConnectors = TRUE,
     widthConnectors = 1) +
+  ylab(expression(paste("-",log[10],p[adj]))) +
+  xlab(expression(paste(log[2], "FoldChange"))) +
   scale_color_colorblind() +
   cowplot::theme_cowplot()
 
@@ -291,12 +293,29 @@ chrom_sizes <- read_tsv("https://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips
 ### 1.2.2 Visual H3K27me3
 ```{r allchrm}
 
-ggplot(broadpeaks_WT_me3) +
+p1 <- ggplot(broadpeaks_WT_me3) +
+  ggtitle("WT me3 Peaks") +
+  geom_segment(data = chrom_sizes,
+               aes(x = chr, y = 0, yend = len),
+               size = 4.5, color = "white") +
   geom_segment(data=chrom_sizes,
                aes(x=chr, y=0, yend=len),
-               size=4, color= "orange") +
+               size=3.3, color= "orange") +
+  geom_point(aes(x=chrom, y=chromStart), shape=16) +
+theme_tufte()
+
+p2 <- ggplot(broadpeaks_KO_me3) +
+    ggtitle("cKO me3 Peaks") +
+    geom_segment(data = chrom_sizes,
+               aes(x = chr, y = 0, yend = len),
+               size = 4.5, color = "white") +
+  geom_segment(data=chrom_sizes,
+               aes(x=chr, y=0, yend=len),
+               size=3.3, color= "lightblue") +
   geom_point(aes(x=chrom, y=chromStart), shape=16) +
   theme_tufte()
+
+plot_grid(p1, p2)
 
 ```
 
@@ -310,7 +329,7 @@ ggplot(bind_rows(broadpeaks_KO_me3, broadpeaks_WT_me3) %>%
                size=4, color= "orange") + 
   geom_segment(data=chrom_sizes %>% filter(chr==2),
                aes(x=c("cKO"), y=0, yend=len),
-               size=4, color= "orange") +
+               size=4, color= "lightblue") +
   geom_point(aes(x=name,y=chromStart)) + 
   coord_flip() + 
   theme_tufte()
@@ -322,17 +341,18 @@ ggplot(bind_rows(broadpeaks_KO_me3, broadpeaks_WT_me3) %>%
 ```{r allchrmAc}
 
 ggplot() +
+  ggtitle("WT (orange) vs cKO (light blue) H3K27ac peaks") +
   geom_segment(data=chrom_sizes,
                aes(x=chr, y=0, yend=len),
-               size=4, color= "orange") +
+               size=4, color= "lightblue") +
   geom_segment(data=chrom_sizes,
                aes(x=chr, y=0, yend=-len),
-               size=4, color= "lightblue") +
+               size=4, color= "orange") +
   geom_point(data=broadpeaks_WT_ac,
              aes(x=chrom, y=-chromStart), shape=16, alpha= 0.5) +
   geom_point(data=broadpeaks_KO_ac,
               aes(x=chrom, y=chromStart), shape=16, alpha=0.5)+
-  geom_hline(yintercept = 0, linetype = "solid", color = "white") +
+  geom_hline(yintercept = 0, linetype = "solid", color = "white", linewidth = 1.5) +
   theme_tufte(base_family="sans") +
   cowplot::theme_cowplot() +
   coord_flip() 
@@ -350,13 +370,15 @@ acetyl_activity <- gene_annotations %>%
   filter(name_1006=="histone acetyltransferase activity") %>% 
   left_join(res_df %>% 
               distinct(gene_id,.keep_all=T), 
-            join_by(ensembl_gene_id==gene_id))
+            join_by(ensembl_gene_id==gene_id)) %>%
+  arrange(padj)
 
 methyl_activity <- gene_annotations %>% 
   filter(name_1006=="histone methyltransferase activity") %>% 
   left_join(res_df %>% 
               distinct(gene_id,.keep_all=T), 
-            join_by(ensembl_gene_id==gene_id))
+            join_by(ensembl_gene_id==gene_id)) %>%
+  arrange(padj)
 
 ggplot(acetyl_activity) + 
   geom_point(aes(x="Ac",y=log2FoldChange)) + 
