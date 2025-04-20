@@ -33,6 +33,7 @@ library(plyranges)
 library(ggrepel)
 library(conflicted)
 library(EnhancedVolcano)
+library(here)
 ```
 
 ### 0.3 Conflict Mangement
@@ -323,7 +324,7 @@ ggplot(bind_rows(broadpeaks_KO_me3, broadpeaks_WT_me3) %>%
 ggplot() +
   geom_segment(data=chrom_sizes,
                aes(x=chr, y=0, yend=len),
-               size=4, color= "lightblue") +
+               size=4, color= "orange") +
   geom_segment(data=chrom_sizes,
                aes(x=chr, y=0, yend=-len),
                size=4, color= "lightblue") +
@@ -331,8 +332,12 @@ ggplot() +
              aes(x=chrom, y=-chromStart), shape=16, alpha= 0.5) +
   geom_point(data=broadpeaks_KO_ac,
               aes(x=chrom, y=chromStart), shape=16, alpha=0.5)+
+  geom_hline(yintercept = 0, linetype = "solid", color = "white") +
   theme_tufte(base_family="sans") +
+  cowplot::theme_cowplot() +
   coord_flip() 
+
+
 
 ```
 
