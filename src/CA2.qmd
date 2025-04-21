@@ -297,10 +297,10 @@ p1 <- ggplot(broadpeaks_WT_me3) +
   ggtitle("WT me3 Peaks") +
   geom_segment(data = chrom_sizes,
                aes(x = chr, y = 0, yend = len),
-               size = 4.5, color = "white") +
+               linewidth = 4.5, color = "white") +
   geom_segment(data=chrom_sizes,
                aes(x=chr, y=0, yend=len),
-               size=3.3, color= "orange") +
+               linewidth=3.3, color= "orange") +
   geom_point(aes(x=chrom, y=chromStart), shape=16) +
 theme_tufte()
 
@@ -308,20 +308,22 @@ p2 <- ggplot(broadpeaks_KO_me3) +
     ggtitle("cKO me3 Peaks") +
     geom_segment(data = chrom_sizes,
                aes(x = chr, y = 0, yend = len),
-               size = 4.5, color = "white") +
+               linewidth = 4.5, color = "white") +
   geom_segment(data=chrom_sizes,
                aes(x=chr, y=0, yend=len),
-               size=3.3, color= "lightblue") +
+               linewidth=3.3, color= "lightblue") +
   geom_point(aes(x=chrom, y=chromStart), shape=16) +
   theme_tufte()
 
-plot_grid(p1, p2)
+
+ggsave(here("results", "me3peak_comparison.pdf"), plot_grid(p1, p2), width = 10, height = 6, units = "in", dpi = 300)
+
 
 ```
 
 ```{r chrm2}
 
-ggplot(bind_rows(broadpeaks_KO_me3, broadpeaks_WT_me3) %>%
+p1 <- ggplot(bind_rows(broadpeaks_KO_me3, broadpeaks_WT_me3) %>%
          filter(chrom==2) %>% 
          mutate(name=str_split_i(name,"_",1))) + 
   geom_segment(data=chrom_sizes %>% filter(chr==2),
@@ -334,13 +336,16 @@ ggplot(bind_rows(broadpeaks_KO_me3, broadpeaks_WT_me3) %>%
   coord_flip() + 
   theme_tufte()
 
+ggsave(here("results", "me3peak_comparison_chr2.pdf"), p1, width = 10, height = 3, units = "in", dpi = 300)
+
+
 ```
 
 ### 1.2.3 Visual H3K27ac
 
 ```{r allchrmAc}
 
-ggplot() +
+p1 <- ggplot() +
   ggtitle("WT (orange) vs cKO (light blue) H3K27ac peaks") +
   geom_segment(data=chrom_sizes,
                aes(x=chr, y=0, yend=len),
@@ -356,6 +361,8 @@ ggplot() +
   theme_tufte(base_family="sans") +
   cowplot::theme_cowplot() +
   coord_flip() 
+
+ggsave(here("results", "ac_peak_comparison.pdf"), p1, width = 10, height = 6, units = "in", dpi = 300)
 
 
 
@@ -455,7 +462,7 @@ by_origin_ac <- res_df %>% filter(gene_id %in% ac_to_ac) %>%
 by_origin_nu <- res_df %>% filter(gene_id %in% nu_to_ac) %>%
   dplyr::count(change) %>% 
   rename(me3=n) %>%
-  pivot_wider(names_from=change, values_from=me3) %>% 
+  pivot_wider(names_from=change, values_from=me3) %>%
   mutate(exp="nuToAC")
 
 non_ac_gene <- res_df %>% filter(!(gene_id %in% ac_all)) %>%
