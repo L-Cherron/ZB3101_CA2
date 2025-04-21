@@ -144,7 +144,7 @@ p1 <- EnhancedVolcano(res_df,
                  x = 'log2FoldChange',
                  y = 'pvalue',
                  title = 'WT versus cKO',
-                 pCutoff = 10e-50,
+                 pCutoff = 1e-50,
                  FCcutoff = 1,
                  pointSize = 3.0,
                  labSize = 6.0,
@@ -240,7 +240,7 @@ ggplot(upreg_df %>%
          filter(rownum<600)) +
   geom_point(aes(x=rownum, log2FoldChange))
 
-ggplot(res_df) +
+p1 <- ggplot(res_df) +
   geom_density(aes(log2FoldChange),fill="gray") + 
   geom_segment(aes(x=-1,y=0,yend=1.25))+
   geom_segment(aes(x=1,y=0,yend=1.25))+
@@ -249,6 +249,8 @@ ggplot(res_df) +
   geom_segment(aes(x=-1.0488,y=0,yend=1),col="red")+
   xlim(-2,2) + 
   theme_half_open()
+
+ggsave(here("results", "distrution_eed.png"), p1, width = 6, height = 5)
 
 ```
 
