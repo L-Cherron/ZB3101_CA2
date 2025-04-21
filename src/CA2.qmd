@@ -4,6 +4,7 @@ format: html
 ---
 
 # Link to Doc
+
 https://nusu-my.sharepoint.com/:w:/g/personal/e0958318_u_nus_edu/EW3JYlrT-z5CnZ_BVkKzoX4BkfC1PDEDRX9sHKhkOlHtIg?e=t3Irga
 
 # 0. Setup
@@ -34,6 +35,9 @@ library(ggrepel)
 library(conflicted)
 library(EnhancedVolcano)
 library(here)
+library(ggthemes)
+library(scales)
+library(colorspace)
 ```
 
 ### 0.3 Conflict Mangement
@@ -57,6 +61,7 @@ tibble_to_gr <- function(x){
 ## 1.1 RNA-SEQ
 
 ### 1.1.1 Reading Data
+
 ```{r imptRead}
 counts_df <- read_tsv("../data/GSE169312_ReadCount.txt.gz",
                    col_types = "cnnnnnn") %>% 
@@ -110,6 +115,7 @@ res_df <- res_df %>%
 ```
 
 ### 1.1.2 Visualizing
+
 ```{r volcanoPlot}
 ggplot(res_df)+
   geom_point(aes(x=log2FoldChange,logp, col=change),
@@ -150,7 +156,7 @@ p1 <- EnhancedVolcano(res_df,
   scale_color_colorblind() +
   cowplot::theme_cowplot()
 
-ggsave(here("results", "enhanced_volcano.pdf"), p1, width = 10, height = 12, units = "in", dpi = 300)
+ggsave(here("results", "enhanced_volcano.png"), p1, width = 10, height = 12, units = "in", dpi = 300)
 
 plotDispEsts(dds)
 ```
@@ -220,6 +226,7 @@ treemapPlot(reduced_terms)
 ```
 
 ### 1.1.4 False Discovery
+
 ```{r}
 ggplot(upreg_df %>% 
          arrange(pvalue) %>%
@@ -291,6 +298,7 @@ chrom_sizes <- read_tsv("https://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips
 ```
 
 ### 1.2.2 Visual H3K27me3
+
 ```{r allchrm}
 
 p1 <- ggplot(broadpeaks_WT_me3) +
@@ -316,7 +324,7 @@ p2 <- ggplot(broadpeaks_KO_me3) +
   theme_tufte()
 
 
-ggsave(here("results", "me3peak_comparison.pdf"), plot_grid(p1, p2), width = 10, height = 6, units = "in", dpi = 300)
+ggsave(here("results", "me3peak_comparison.png"), plot_grid(p1, p2), width = 10, height = 6, units = "in", dpi = 300)
 
 
 ```
@@ -328,15 +336,15 @@ p1 <- ggplot(bind_rows(broadpeaks_KO_me3, broadpeaks_WT_me3) %>%
          mutate(name=str_split_i(name,"_",1))) + 
   geom_segment(data=chrom_sizes %>% filter(chr==2),
                aes(x=c("WT"), y=0, yend=len),
-               size=4, color= "orange") + 
+               linewidth=4, color= "orange") + 
   geom_segment(data=chrom_sizes %>% filter(chr==2),
                aes(x=c("cKO"), y=0, yend=len),
-               size=4, color= "lightblue") +
+               linewidth=4, color= "lightblue") +
   geom_point(aes(x=name,y=chromStart)) + 
   coord_flip() + 
   theme_tufte()
 
-ggsave(here("results", "me3peak_comparison_chr2.pdf"), p1, width = 10, height = 3, units = "in", dpi = 300)
+ggsave(here("results", "me3peak_comparison_chr2.png"), p1, width = 10, height = 3, units = "in", dpi = 300)
 
 
 ```
@@ -362,7 +370,7 @@ p1 <- ggplot() +
   cowplot::theme_cowplot() +
   coord_flip() 
 
-ggsave(here("results", "ac_peak_comparison.pdf"), p1, width = 10, height = 6, units = "in", dpi = 300)
+ggsave(here("results", "ac_peak_comparison.png"), p1, width = 10, height = 6, units = "in", dpi = 300)
 
 
 
@@ -371,14 +379,20 @@ ggsave(here("results", "ac_peak_comparison.pdf"), p1, width = 10, height = 6, un
 ## 1.3 Relationship
 
 ### 1.3.1 Histone Mod
+
 Histone AcetylTransferase gene regulation
+
 ```{r HAT}
+my_palette <- tableau_color_pal(palette='Color Blind')(8)
+my_palette <- desaturate(my_palette,.3)
+my_palette <- darken(desaturate(colorblind_pal()(8),0.5),0.2)[2:8]
+
 acetyl_activity <- gene_annotations %>% 
   filter(name_1006=="histone acetyltransferase activity") %>% 
   left_join(res_df %>% 
               distinct(gene_id,.keep_all=T), 
             join_by(ensembl_gene_id==gene_id)) %>%
-  arrange(padj)
+  arrange(padj) 
 
 methyl_activity <- gene_annotations %>% 
   filter(name_1006=="histone methyltransferase activity") %>% 
@@ -387,22 +401,26 @@ methyl_activity <- gene_annotations %>%
             join_by(ensembl_gene_id==gene_id)) %>%
   arrange(padj)
 
-ggplot(acetyl_activity) + 
-  geom_point(aes(x="Ac",y=log2FoldChange)) + 
-  geom_text_repel(aes(x="Ac", y=log2FoldChange,
+p1 <- ggplot(acetyl_activity) + 
+  geom_point(aes(x="H3K27ac",y=log2FoldChange), color = my_palette[2]) + 
+  geom_text_repel(aes(x="H3K27ac", y=log2FoldChange,
                       label=external_gene_name)) + 
   geom_point(data=methyl_activity,
-             aes(x="Me3",y=log2FoldChange)) + 
+             aes(x="H3K27me3",y=log2FoldChange), color = my_palette[3]) + 
   geom_text_repel(data=methyl_activity,
-                  aes(x="Me3", y=log2FoldChange,
+                  aes(x="H3K27me3", y=log2FoldChange,
                       label=external_gene_name)) + 
-  theme_bw()
+  geom_hline(yintercept=c(-1, 1), linetype = "dashed", color = my_palette[1], linewidth = 1) +
+  cowplot::theme_cowplot()
+
+ggsave(here("results", "histone_modif_genes.png"), p1, width = 7, height = 5)
 
 ```
 
 ### 1.3.2 Read GRange
 
 This is setup
+
 ```{r confusionM}
 # It is super effective
 tolerance <- 20
@@ -478,12 +496,26 @@ by_origin <- bind_rows(by_origin_ac,
 ```
 
 ### 1.3.3 Fisher Acetyl
+
 Actual stats table
+
 ```{r MkTable}
 acetyl_diff <- by_origin[1:3,] %>% 
   select(-exp) %>% 
   colSums() %>% 
   bind_rows(by_origin[4,]) 
+
+conflicted::conflicts_prefer(base::intersect)
+intersect(me3_to_ac, ac_to_ac)
+intersect(nu_to_ac, ac_to_ac)
+intersect(me3_to_ac, nu_to_ac)
+
+
+## Genes Fgfr2 & Arfip1 present in me3_to_ac and ac_to_ac
+# Both genes were classified as NC, hence removing four counts from NC (two from each group) to prevent double counting in Fisher's exact test
+
+acetyl_diff$NC[1] <- acetyl_diff$NC[1] - 4
+
 
 print(acetyl_diff)
 print(fisher.test(acetyl_diff %>% select(-exp)))
@@ -492,8 +524,16 @@ print(chisq.test(acetyl_diff %>% select(-exp))$expected)
 ```
 
 ### 1.3.4 Fisher Origin
+
 ```{r}
 origin_diff <- by_origin[1:3,]
+
+## Genes Fgfr2 & Arfip1 present in me3_to_ac and ac_to_ac
+# Both genes were classified as NC, hence removing four counts from NC (two from each group) to prevent double counting in Fisher's exact test
+
+origin_diff$NC[1] <- origin_diff$NC[1] - 2 
+origin_diff$NC[2] <- origin_diff$NC[2] - 2 
+
 
 print(origin_diff)
 print(fisher.test(origin_diff %>% select(-exp), workspace = 2e6))
@@ -502,10 +542,10 @@ print(chisq.test(origin_diff %>% select(-exp))$expected)
 
 ```
 
-
 # 2. Biological Impact
 
 ## 2.1 Downregulation
+
 ```{r}
 downreg_genelist <- res_df %>%
   filter(change=="DOWN") %>% 
@@ -553,11 +593,12 @@ treemapPlot(dreduced_terms)
 
 ```
 
-
 ## 2.2 Neuronal
+
 As most is neuronal impact, and since the cells are mostly neuronal in nature
 
 ### 2.2.1 Glutamatergic Synapse
+
 The list can be pasted into the website to show the impact on the synaptic
 
 ```{r}
@@ -623,7 +664,6 @@ print(pull(inhib_synapse_genes%>%
              filter(change=="DOWN"), keggName) %>% paste(collapse=" OR "))
 
 ```
-
 
 ## 2.3 Gene Regulation
 
