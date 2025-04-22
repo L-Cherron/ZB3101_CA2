@@ -224,11 +224,52 @@ reduced_terms <- reduceSimMatrix(
 
 treemapPlot(reduced_terms)
 
+```
+
+### 1.1.4 Analysis of Upregulated genes
+
+```{r}
+upreg_df <- upreg_df %>% # 794 genes
+  mutate(lfc_bin = case_when(
+    log2FoldChange >= 1 & log2FoldChange < 1.5 ~ "1-1.5",
+    log2FoldChange >= 1.5 & log2FoldChange < 2 ~ "1.5-2",
+    log2FoldChange >= 2 & log2FoldChange < 3 ~ "2-3",
+    log2FoldChange >= 3 & log2FoldChange < 4 ~ "3-4",
+    log2FoldChange >= 4 & log2FoldChange < 5 ~ "4-5",
+    log2FoldChange >= 5 & log2FoldChange < 6 ~ "5-6",
+    log2FoldChange >= 6 & log2FoldChange < 7 ~ "6-7",
+    log2FoldChange >= 7                      ~ "7+"
+  ))
+
+
+ggplot(upreg_df, aes(x = lfc_bin)) +
+  geom_bar(fill = my_palette[2]) +
+  labs(
+    title = expression(paste("Distribution of ", log[2],  "FoldChange (Upregulated genes)")),
+    x = expression(paste(log[2], "FoldChange Bin")),
+    y = "Number of Genes"
+  ) +
+  cowplot::theme_cowplot()
+
+most_up <- upreg_df %>% 
+  filter(lfc_bin == "7+")
+
+write.csv(most_up %>% select(gene_id),
+          file = here::here("results", "most_up.csv"),
+          row.names = FALSE,
+          quote = FALSE)
+
+# ENSMUSG00000027102 - Hoxd8 TF activate
+# ENSMUSG00000038203 - Hoxa13 TF activate
+# ENSMUSG00000072693 - Gm10401 Stretch regulated skeletal muscle protein
+# ENSMUSG00000022484 - Hoxc10 TF activate
+# ENSMUSG00000034777 - Vax2 TF repress, forebrain and eye development usually in ventral retina during early eye development
+# ENSMUSG00000026251 - Chrnd receptor usually on skeletal muscle tissue
 
 
 ```
 
-### 1.1.4 False Discovery
+### 1.1.5 False Discovery
 
 ```{r}
 ggplot(upreg_df %>% 
@@ -598,6 +639,47 @@ treemapPlot(dreduced_terms)
 
 ```
 
+### 2.1.1 Analysis of downregulation
+
+```{r}
+downreg_df <- res_df %>% filter(change == "DOWN") # 647 genes
+
+downreg_df <- downreg_df %>% 
+  mutate(lfc_bin = case_when(
+    abs(log2FoldChange) >= 1 & abs(log2FoldChange) < 1.5 ~ "1-1.5",
+    abs(log2FoldChange) >= 1.5 & abs(log2FoldChange) < 2 ~ "1.5-2",
+    abs(log2FoldChange) >= 2 & abs(log2FoldChange) < 3 ~ "2-3",
+    abs(log2FoldChange) >= 3 & abs(log2FoldChange) < 4 ~ "3-4",
+    abs(log2FoldChange) >= 4 & abs(log2FoldChange) < 5 ~ "4-5",
+    abs(log2FoldChange) >= 5 & abs(log2FoldChange) < 6 ~ "5-6",
+    abs(log2FoldChange) >= 6 & abs(log2FoldChange) < 7 ~ "6-7",
+    abs(log2FoldChange) >= 7                      ~ "7+"
+  ))
+
+
+ggplot(downreg_df, aes(x = lfc_bin)) +
+  geom_bar(fill = my_palette[2]) +
+  labs(
+    title = expression(paste("Distribution of ", log[2],  "FoldChange (Downregulated genes)")),
+    x = expression(paste(log[2], "FoldChange Bin")),
+    y = "Number of Genes"
+  ) +
+  cowplot::theme_cowplot()
+
+most_down <- downreg_df %>% 
+  filter(lfc_bin == "7+")
+
+most_down2 <- downreg_df %>% 
+  filter(lfc_bin == "4-5")
+
+write.csv(most_up %>% select(gene_id),
+          file = here::here("results", "most_down.csv"),
+          row.names = FALSE,
+          quote = FALSE)
+
+
+
+```
 ## 2.2 Neuronal
 
 As most is neuronal impact, and since the cells are mostly neuronal in nature
