@@ -5,7 +5,7 @@ format: html
 
 # Link to Doc
 
-https://nusu-my.sharepoint.com/:w:/g/personal/e0958318_u_nus_edu/EW3JYlrT-z5CnZ_BVkKzoX4BkfC1PDEDRX9sHKhkOlHtIg?e=t3Irga
+https://docs.google.com/document/d/1BYS4zePKyOVAqnPf5pQxrlQjv0Y3ErpW5AQKRQLfT5U/edit?usp=sharing
 
 # 0. Setup
 
@@ -118,45 +118,39 @@ res_df <- res_df %>%
 
 ```{r volcanoPlot}
 ggplot(res_df)+
-  geom_point(aes(x=log2FoldChange,logp, col=change),
-             show.legend = F) +
+  geom_point(aes(x=log2FoldChange,y=logp, col=change),
+             show.legend = F, shape=16) +
   scale_color_colorblind() +
-  ylab(expression(paste("-",log[10],p[adj]))) +
-  xlab(expression(paste(log[2], "FoldChange"))) +
-  cowplot::theme_cowplot()
-  # theme_tufte(base_size = 14, base_family = "sans")
+  geom_text_repel(data=res_df %>% filter(logp>=50),
+                  aes(x=log2FoldChange,y=logp,label=gene_name),
+                  arrow = arrow(length = unit(0.015, "npc")),
+                  force=1.5, max.overlaps = 15) + 
+  geom_hline(yintercept = 50, linetype="dashed") +
+  labs(x = expression(paste("-",log[10],p[adj])),
+    y= expression(paste(log[2], "FoldChange")),
+    title = "(a) Wild Type versus EED Knockout") +
+  cowplot::theme_cowplot() -> p1a
+
+p1a
 
 ggplot(res_df %>% 
          count(change) %>% 
          mutate(n=n/sum(n)))+
-  geom_bar(aes(x="Rat",fill=change,y=n), stat="identity") +
+  geom_bar(aes(x="Rat",fill=change,y=n), 
+           stat="identity", show.legend = F) +
   scale_fill_colorblind() + 
-  theme_tufte()
+  theme_void() +
+  scale_y_reverse() + labs(title="(b)") -> p1b
 
-# Get Percentages
+p1b
+
+ # Get Percentages
 res_df %>% 
   count(change) %>% 
   mutate(n=n/sum(n))
 
-# Volcano plot with the gene name labels and -logp > 50
-p1 <- EnhancedVolcano(res_df,
-                 lab = res_df$gene_name,
-                 x = 'log2FoldChange',
-                 y = 'pvalue',
-                 title = 'WT versus cKO',
-                 pCutoff = 1e-50,
-                 FCcutoff = 1,
-                 pointSize = 3.0,
-                 labSize = 6.0,
-                colAlpha = 1,
-                drawConnectors = TRUE,
-    widthConnectors = 1) +
-  ylab(expression(paste("-",log[10],p[adj]))) +
-  xlab(expression(paste(log[2], "FoldChange"))) +
-  scale_color_colorblind() +
-  cowplot::theme_cowplot()
-
-ggsave(here("results", "enhanced_volcano.png"), p1, width = 10, height = 12, units = "in", dpi = 300)
+ggsave(here("results", "enhanced_volcano.png"), p1a, width = 5, height = 4, units = "in", dpi = 300)
+ggsave(here("results", "simple_bar.png"), p1b, width = 0.25, height = 2, units = "in", dpi = 300)
 
 plotDispEsts(dds)
 ```
@@ -240,17 +234,24 @@ ggplot(upreg_df %>%
          filter(rownum<600)) +
   geom_point(aes(x=rownum, log2FoldChange))
 
-p1 <- ggplot(res_df) +
+p2a <- ggplot(res_df) +
   geom_density(aes(log2FoldChange),fill="gray") + 
-  geom_segment(aes(x=-1,y=0,yend=1.25))+
-  geom_segment(aes(x=1,y=0,yend=1.25))+
-  geom_segment(aes(x=-1.5,y=0,yend=0.25),alpha=0.25)+
-  geom_segment(aes(x=1.5,y=0,yend=0.25),alpha=0.25)+
-  geom_segment(aes(x=-1.0488,y=0,yend=1),col="red")+
+  annotate("segment", x=-1,y=0,yend=1.25) + 
+  annotate("segment", x=1,y=0,yend=1.25) +
+  annotate("segment", x=-1.5,y=0,yend=0.25, alpha=0.5) + 
+  annotate("segment", x=1.5,y=0,yend=0.25, alpha=0.5) + 
+  annotate("segment", x=-1.0488,y=0,yend=1, col = "brown4") + 
+  annotate("text", x=-1.325, y=1, label = "EED", col="brown4", size=6)+
   xlim(-2,2) + 
-  theme_half_open()
+  labs(title="(a) Log Fold Change Distribution",
+       y="density",
+       x="LogFoldChange") + 
+  theme_half_open() + 
+  theme(axis.text = element_text(size=16))
 
-ggsave(here("results", "distrution_eed.png"), p1, width = 6, height = 5)
+p2a
+
+ggsave(here("results", "distrution_eed.png"), p2a, width = 5, height = 5)
 
 ```
 
@@ -303,60 +304,44 @@ chrom_sizes <- read_tsv("https://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips
 
 ```{r allchrm}
 
-p1 <- ggplot(broadpeaks_WT_me3) +
-  ggtitle("WT me3 Peaks") +
+p1 <- ggplot() +
+  labs(title="WT vs cKO me3 Peaks", x="Chromosome", y="")+
   geom_segment(data = chrom_sizes,
-               aes(x = chr, y = 0, yend = len),
+               aes(x = chr, y = 0, yend = -len),
                linewidth = 4.5, color = "white") +
   geom_segment(data=chrom_sizes,
-               aes(x=chr, y=0, yend=len),
+               aes(x=chr, y=0, yend=-len),
                linewidth=3.3, color= "orange") +
-  geom_point(aes(x=chrom, y=chromStart), shape=16) +
-theme_tufte()
-
-p2 <- ggplot(broadpeaks_KO_me3) +
-    ggtitle("cKO me3 Peaks") +
-    geom_segment(data = chrom_sizes,
-               aes(x = chr, y = 0, yend = len),
-               linewidth = 4.5, color = "white") +
+  geom_point(data=broadpeaks_WT_me3,
+             aes(x=chrom, y=-chromStart), shape=16) +
+  geom_segment(data = chrom_sizes,
+             aes(x = chr, y = 0, yend = len),
+             linewidth = 4.5, color = "white") +
   geom_segment(data=chrom_sizes,
-               aes(x=chr, y=0, yend=len),
-               linewidth=3.3, color= "lightblue") +
-  geom_point(aes(x=chrom, y=chromStart), shape=16) +
-  theme_tufte()
-
-
-ggsave(here("results", "me3peak_comparison.png"), plot_grid(p1, p2), width = 10, height = 6, units = "in", dpi = 300)
-
-
-```
-
-```{r chrm2}
-
-p1 <- ggplot(bind_rows(broadpeaks_KO_me3, broadpeaks_WT_me3) %>%
-         filter(chrom==2) %>% 
-         mutate(name=str_split_i(name,"_",1))) + 
-  geom_segment(data=chrom_sizes %>% filter(chr==2),
-               aes(x=c("WT"), y=0, yend=len),
-               linewidth=4, color= "orange") + 
-  geom_segment(data=chrom_sizes %>% filter(chr==2),
-               aes(x=c("cKO"), y=0, yend=len),
-               linewidth=4, color= "lightblue") +
-  geom_point(aes(x=name,y=chromStart)) + 
+             aes(x=chr, y=0, yend=len),
+             linewidth=3.3, color= "lightblue") +
+  geom_point(data=broadpeaks_KO_me3,
+             aes(x=chrom, y=chromStart), shape=16) +
   coord_flip() + 
-  theme_tufte()
+  cowplot::theme_cowplot() + 
+  theme(axis.ticks.x = element_blank(), 
+    axis.line.x  = element_blank(),
+    axis.text.x=element_blank(),
+    axis.text = element_text(size=12))
 
-ggsave(here("results", "me3peak_comparison_chr2.png"), p1, width = 10, height = 3, units = "in", dpi = 300)
+
+ggsave(here("results", "me3peak_comparison.png"), p1, width = 8, height = 4, units = "in", dpi = 300)
 
 
 ```
+
 
 ### 1.2.3 Visual H3K27ac
 
 ```{r allchrmAc}
 
 p1 <- ggplot() +
-  ggtitle("WT (orange) vs cKO (light blue) H3K27ac peaks") +
+  labs(title="WT vs cKO H3K27ac peaks",x="Chromosome", y="") +
   geom_segment(data=chrom_sizes,
                aes(x=chr, y=0, yend=len),
                size=4, color= "lightblue") +
@@ -368,9 +353,12 @@ p1 <- ggplot() +
   geom_point(data=broadpeaks_KO_ac,
               aes(x=chrom, y=chromStart), shape=16, alpha=0.5)+
   geom_hline(yintercept = 0, linetype = "solid", color = "white", linewidth = 1.5) +
-  theme_tufte(base_family="sans") +
   cowplot::theme_cowplot() +
-  coord_flip() 
+  coord_flip()  + 
+  theme(axis.ticks.x = element_blank(), 
+    axis.line.x  = element_blank(),
+    axis.text.x=element_blank(),
+    axis.text = element_text(size=12))
 
 ggsave(here("results", "ac_peak_comparison.png"), p1, width = 10, height = 6, units = "in", dpi = 300)
 
@@ -404,14 +392,18 @@ methyl_activity <- gene_annotations %>%
   arrange(padj)
 
 p1 <- ggplot(acetyl_activity) + 
+  labs(title="Differential Expression of Histone Modifying Genes",
+       x="")+
   geom_point(aes(x="H3K27ac",y=log2FoldChange), color = my_palette[2]) + 
   geom_text_repel(aes(x="H3K27ac", y=log2FoldChange,
-                      label=external_gene_name)) + 
+                      label=external_gene_name),
+                  max.overlaps = 20) + 
   geom_point(data=methyl_activity,
              aes(x="H3K27me3",y=log2FoldChange), color = my_palette[3]) + 
   geom_text_repel(data=methyl_activity,
                   aes(x="H3K27me3", y=log2FoldChange,
-                      label=external_gene_name)) + 
+                      label=external_gene_name),
+                  max.overlaps = 20) + 
   geom_hline(yintercept=c(-1, 1), linetype = "dashed", color = my_palette[1], linewidth = 1) +
   cowplot::theme_cowplot()
 
@@ -667,7 +659,7 @@ print(pull(inhib_synapse_genes%>%
 
 ```
 
-## 2.3 Gene Regulation
+  ## 2.3 Gene Regulation
 
 ```{r}
 # Add extra filter to those especially biologically significant
