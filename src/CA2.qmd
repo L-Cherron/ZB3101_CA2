@@ -214,8 +214,11 @@ reduced_terms <- reduceSimMatrix(
   threshold = 0.7,
   orgdb = org.Mm.eg.db
 )
+  
 
 treemapPlot(reduced_terms)
+
+
 
 ```
 
@@ -683,5 +686,14 @@ master_gene_gr <- gene_locations %>%
            e_gene=.$ensembl_gene_id,
            name=.$external_gene_name)}
   
+
+```
+
+## Session info
+
+```{r}
+
+# Packages used in this report:
+sessionInfo()
 
 ```
