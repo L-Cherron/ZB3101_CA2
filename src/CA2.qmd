@@ -417,7 +417,7 @@ ggsave(here("results", "ac_peak_comparison.png"), p1, width = 10, height = 6, un
 Histone AcetylTransferase gene regulation
 
 ```{r HAT}
-my_palette <- tableau_color_pal(palette='Color Blind')(8)
+my_palette <- tableau_color_pal(palette='Color Blind')(10)
 my_palette <- desaturate(my_palette,.3)
 my_palette <- darken(desaturate(colorblind_pal()(8),0.5),0.2)[2:8]
 
@@ -668,8 +668,54 @@ write.csv(most_up %>% select(gene_id),
           file = here::here("results", "most_down.csv"),
           row.names = FALSE,
           quote = FALSE)
+```
+
+### 2.1.2 Network analysis and Visualisation of downregulated genes 
+
+```{r}
+downreg_id <-bitr(downreg_df$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb= "org.Mm.eg.db") # 18.7% of input gene IDs are fail to map
+
+downreg_id <- downreg_id[!duplicated(downreg_id[c("ENSEMBL")]),]
+
+down_df <- downreg_df %>%
+  filter(gene_id %in% downreg_id$ENSEMBL) 
+
+down_df$ENTREZID <- downreg_id$ENTREZID
+
+gene_ls <- down_df$log2FoldChange
+names(gene_ls) <- down_df$ENTREZID
+
+go_bp <- enrichGO(gene = names(gene_ls),
+                OrgDb = org.Mm.eg.db,
+                ont = "BP",
+                qvalueCutoff = 0.05,
+                readable = TRUE)
+
+go_bp <- go_bp %>%
+  mutate(geneID = str_to_upper(geneID))
+
+p1 <- barplot(go_bp, showCategory = 20) +
+  theme(
+    axis.text.y = element_text(size = 16), 
+    axis.text.x = element_text(size = 16),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 14)
+  )
+
+go_bp <- go_bp %>%
+  mutate(qscore = -log(p.adjust, base=10))
 
 
+p2 <- barplot(go_bp, x="qscore")  +
+  theme(
+    axis.text.y = element_text(size = 16), 
+    axis.text.x = element_text(size = 16),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 14)
+  )
+
+p3 <- plot_grid(p1, p2, labels = c("a", "b"), label_size = 20)
+ggsave(here("results", "Top_20_process_downreg.png"), p3, width = 16, height = 14)
 
 ```
 ## 2.2 Neuronal
