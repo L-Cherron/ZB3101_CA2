@@ -3,19 +3,36 @@ title: "ZB3101 CA2"
 format: html
 ---
 
-# Link to Doc
-
-https://docs.google.com/document/d/1BYS4zePKyOVAqnPf5pQxrlQjv0Y3ErpW5AQKRQLfT5U/edit?usp=sharing
-
 # 0. Setup
 
 ### 0.1 File Setup
 
-Ensure file set up is as follows...
+Ensure file set up is as follows by creating the src, data & results folder,
+Extracting GSE169312_raw as below,
+``` text
+CA2/
+├── src/
+│   ├── CA2.qmd
+├── data/
+│   └── cKO_H3K27ac_peaks.broadPeak
+│   └── cKO_H3K27me3_peaks.broadPeak
+│   └── WT_H3K27ac_peaks.broadPeak
+│   └── WT_H3K27me3_peaks.broadPeak
+│   └── GSE169312_ReadCount.txt.gz
+│   ├── GSE169312_RAW/
+│       └── GSM5195452_WT_H3K27ac.bw
+│       └── GSM5195453_WT_H3K27me3.bw
+│       └── GSM5195454_cKO_H3K27ac.bw
+│       └── GSM5195456_WT_Input.bw
+│       └── GSM5195457_cKO_Input.bw
+├── results/
+```
 
 ### 0.2 Library Setup
 
-Run this only once, as there are some "conflicts" that leads to errors if run more than once
+Run this only once, as there could some "conflicts" that leads to errors if run more than once
+
+Please install if not already done so.
 
 ```{r Lib, message=FALSE}
 library(tidyverse)
@@ -38,6 +55,10 @@ library(here)
 library(ggthemes)
 library(scales)
 library(colorspace)
+
+my_palette <- tableau_color_pal(palette='Color Blind')(10)
+my_palette <- desaturate(my_palette,.3)
+my_palette <- darken(desaturate(colorblind_pal()(8),0.5),0.2)[2:8]
 ```
 
 ### 0.3 Conflict Mangement
@@ -379,7 +400,6 @@ ggsave(here("results", "me3peak_comparison.png"), p1, width = 8, height = 4, uni
 
 ```
 
-
 ### 1.2.3 Visual H3K27ac
 
 ```{r allchrmAc}
@@ -417,10 +437,6 @@ ggsave(here("results", "ac_peak_comparison.png"), p1, width = 10, height = 6, un
 Histone AcetylTransferase gene regulation
 
 ```{r HAT}
-my_palette <- tableau_color_pal(palette='Color Blind')(10)
-my_palette <- desaturate(my_palette,.3)
-my_palette <- darken(desaturate(colorblind_pal()(8),0.5),0.2)[2:8]
-
 acetyl_activity <- gene_annotations %>% 
   filter(name_1006=="histone acetyltransferase activity") %>% 
   left_join(res_df %>% 
@@ -460,7 +476,6 @@ ggsave(here("results", "histone_modif_genes.png"), p1, width = 7, height = 5)
 This is setup
 
 ```{r confusionM}
-# It is super effective
 tolerance <- 20
 
 gene_locations <- getBM(
@@ -670,7 +685,7 @@ write.csv(most_up %>% select(gene_id),
           quote = FALSE)
 ```
 
-### 2.1.2 Network analysis and Visualisation of downregulated genes 
+### 2.1.2 Network analysis and Visualisation of downregulated genes
 
 ```{r}
 downreg_id <-bitr(downreg_df$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb= "org.Mm.eg.db") # 18.7% of input gene IDs are fail to map
@@ -718,6 +733,7 @@ p3 <- plot_grid(p1, p2, labels = c("a", "b"), label_size = 20)
 ggsave(here("results", "Top_20_process_downreg.png"), p3, width = 16, height = 14)
 
 ```
+
 ## 2.2 Neuronal
 
 As most is neuronal impact, and since the cells are mostly neuronal in nature
@@ -790,7 +806,7 @@ print(pull(inhib_synapse_genes%>%
 
 ```
 
-  ## 2.3 Gene Regulation
+\## 2.3 Gene Regulation
 
 ```{r}
 # Add extra filter to those especially biologically significant
