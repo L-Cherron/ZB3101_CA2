@@ -808,7 +808,7 @@ print(pull(inhib_synapse_genes%>%
 
 ```
 
-\## 2.3 Gene Regulation
+## 2.3 Gene Regulation
 
 ```{r}
 # Add extra filter to those especially biologically significant
