@@ -694,6 +694,8 @@ go_bp <- enrichGO(gene = names(gene_ls),
 go_bp <- go_bp %>%
   mutate(geneID = str_to_upper(geneID))
 
+library(DOSE)
+
 p1 <- barplot(go_bp, showCategory = 20) +
   theme(
     axis.text.y = element_text(size = 16), 
